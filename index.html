@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dashboard</title>
+<title>soalShean Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 <style>
 :root {
@@ -13,7 +13,7 @@
 }
 body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; color-scheme: dark; }
 .container { max-width: 980px; margin: auto; }
-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; flex-wrap: wrap; gap: 12px; }
 h1, h2, h3 { color: var(--accent); margin: 0; }
 .btn { background: var(--accent); color: #0E1020; border: none; padding: 10px 18px; font-weight: 600; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; transition: .15s; }
 .btn:hover { opacity: 0.9; }
@@ -28,13 +28,22 @@ h1, h2, h3 { color: var(--accent); margin: 0; }
 .skeleton { background: linear-gradient(90deg, #161B22 25%, #222A35 50%, #161B22 75%); background-size: 200% 100%; animation: pulse 1.5s infinite; border-radius: 8px; height: 90px; }
 @keyframes pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-/* Results Modal & Tables */
-dialog { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 860px; width: 94%; }
-dialog::backdrop { background: rgba(0,0,0,0.75); backdrop-filter: blur(3px); }
+/* Modals */
+dialog { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 14px; padding: 24px; max-width: 440px; width: 92%; }
+dialog::backdrop { background: rgba(0,0,0,0.78); backdrop-filter: blur(4px); }
 table { width: 100%; border-collapse: collapse; margin-top: 16px; }
 th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
 th { color: var(--muted); background: #1C232D; }
-select { padding: 8px 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+select, input[type=password], input[type=text] { padding: 10px 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box; }
+
+/* Numeric Keypad UI */
+.pin-dots { display: flex; justify-content: center; gap: 12px; margin: 20px 0; }
+.dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); background: transparent; transition: .15s; }
+.dot.filled { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 10px rgba(139,143,255,0.5); }
+.numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-width: 280px; margin: auto; }
+.num-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); font-size: 22px; font-weight: bold; border-radius: 12px; padding: 16px; cursor: pointer; transition: .15s; user-select: none; }
+.num-btn:hover { background: #222A35; border-color: var(--accent); }
+.num-btn:active { transform: scale(0.95); }
 </style>
 </head>
 <body>
@@ -45,8 +54,8 @@ select { padding: 8px 12px; background: var(--bg); color: var(--text); border: 1
   </header>
 
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-    <h2 style="font-size:20px">Quizzes</h2>
-    <a href="editor.html" class="btn" id="new-btn" style="display:none">+ Create New Quiz</a>
+    <h2 style="font-size:20px">📝</h2>
+    <a href="editor.html" class="btn" id="new-btn" style="display:none">+ New Quiz</a>
   </div>
 
   <div id="quiz-list" class="grid">
@@ -54,6 +63,67 @@ select { padding: 8px 12px; background: var(--bg); color: var(--text); border: 1
     <div class="skeleton"></div>
   </div>
 </div>
+
+<!-- Modal: Quick PIN Login Pad -->
+<dialog id="pinLoginModal">
+  <div style="text-align:center">
+    <h3 style="margin-top:0">PIN Login</h3>
+    <p style="color:var(--muted);font-size:14px;margin:6px 0">Enter your 6-digit teacher security PIN</p>
+    
+    <div class="pin-dots">
+      <div class="dot" id="dot0"></div>
+      <div class="dot" id="dot1"></div>
+      <div class="dot" id="dot2"></div>
+      <div class="dot" id="dot3"></div>
+      <div class="dot" id="dot4"></div>
+      <div class="dot" id="dot5"></div>
+    </div>
+
+    <div id="pinMsg" style="min-height:20px;font-size:13px;color:var(--danger);margin-bottom:12px"></div>
+
+    <div class="numpad">
+      <button class="num-btn" data-val="1">1</button>
+      <button class="num-btn" data-val="2">2</button>
+      <button class="num-btn" data-val="3">3</button>
+      <button class="num-btn" data-val="4">4</button>
+      <button class="num-btn" data-val="5">5</button>
+      <button class="num-btn" data-val="6">6</button>
+      <button class="num-btn" data-val="7">7</button>
+      <button class="num-btn" data-val="8">8</button>
+      <button class="num-btn" data-val="9">9</button>
+      <button class="num-btn" style="font-size:14px;color:var(--muted)" id="clearPinBtn">Clear</button>
+      <button class="num-btn" data-val="0">0</button>
+      <button class="num-btn" style="font-size:18px" id="backPinBtn">⌫</button>
+    </div>
+
+    <div style="margin-top:20px">
+      <button class="btn alt" id="closePinModalBtn" style="width:auto;align-items: center;">Cancel</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Modal: Set / Change Quick PIN -->
+<dialog id="setPinModal">
+  <h3>🔑 Set Quick Login PIN</h3>
+  <p style="color:var(--muted);font-size:14px">Create a 6-digit numeric PIN for instant sign-in without opening Google Sign-In every time.</p>
+  
+  <div style="margin:16px 0">
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">New 6-Digit PIN</label>
+    <input type="password" id="newPinInput" maxlength="6" pattern="\d{6}" placeholder="e.g. 123456" inputmode="numeric">
+  </div>
+  
+  <div style="margin-bottom:20px">
+    <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:4px">Confirm 6-Digit PIN</label>
+    <input type="password" id="confirmPinInput" maxlength="6" pattern="\d{6}" placeholder="Repeat PIN" inputmode="numeric">
+  </div>
+
+  <div id="setPinError" style="color:var(--danger);font-size:13px;margin-bottom:12px"></div>
+
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+    <button class="btn alt" id="cancelSetPinBtn">Cancel</button>
+    <button class="btn" id="savePinBtn">Save PIN</button>
+  </div>
+</dialog>
 
 <!-- Confirm Delete Dialog -->
 <dialog id="confirmModal">
@@ -66,7 +136,7 @@ select { padding: 8px 12px; background: var(--bg); color: var(--text); border: 1
 </dialog>
 
 <!-- Submissions & Results Dialog -->
-<dialog id="resultsModal">
+<dialog id="resultsModal" style="max-width:860px">
   <div style="display:flex;justify-content:space-between;align-items:center">
     <h2 id="resTitle">Quiz Submissions</h2>
     <button class="btn alt" id="closeResBtn">✕ Close</button>
@@ -106,11 +176,12 @@ select { padding: 8px 12px; background: var(--bg); color: var(--text); border: 1
 </dialog>
 
 <script type="module">
-import { auth, db, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, collection, query, orderBy, getDocs, doc, deleteDoc, getDoc } from "./firebase.js";
+import { auth, db, signInWithPopup, GoogleAuthProvider, EmailAuthProvider, linkWithCredential, signInWithEmailAndPassword, updatePassword, signOut, onAuthStateChanged, collection, query, orderBy, getDocs, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from "./firebase.js";
 
 const safeHTML = (str) => DOMPurify.sanitize(String(str || ""));
 let currentSubmissions = [];
 let currentQuizTitle = "Quiz";
+let pinBuffer = "";
 
 function showConfirm() {
   return new Promise(resolve => {
@@ -130,19 +201,156 @@ onAuthStateChanged(auth, async (user) => {
 
   if (user && user.email) {
     authBox.innerHTML = `
-      <span style="font-size:14px;color:var(--muted);margin-right:10px">${safeHTML(user.email)}</span>
-      <button class="btn alt" id="logoutBtn">Sign Out</button>`;
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:14px;color:var(--muted)">${safeHTML(user.email)}</span>
+        <button class="btn alt" id="openSetPinBtn">🔑 Quick PIN</button>
+        <button class="btn alt" id="logoutBtn">Sign Out</button>
+      </div>`;
     document.getElementById("logoutBtn").onclick = () => signOut(auth);
+    document.getElementById("openSetPinBtn").onclick = () => document.getElementById("setPinModal").showModal();
     newBtn.style.display = "inline-flex";
     loadQuizzes();
   } else {
-    authBox.innerHTML = `<button class="btn" id="loginBtn">Sign In with Google</button>`;
+    authBox.innerHTML = `
+      <div style="display:flex;gap:10px">
+        <button class="btn" id="loginBtn">Sign In with Google</button>
+        <button class="btn alt" id="pinLoginBtn">🔢 PIN Login</button>
+      </div>`;
     document.getElementById("loginBtn").onclick = () => signInWithPopup(auth, new GoogleAuthProvider());
+    document.getElementById("pinLoginBtn").onclick = openPinPad;
     newBtn.style.display = "none";
     document.getElementById("quiz-list").innerHTML = `<p style="color:var(--muted)">Please sign in as a teacher to manage your quizzes.</p>`;
   }
 });
 
+/* PIN Keypad Login Logic */
+function openPinPad() {
+  pinBuffer = "";
+  updatePinDots();
+  document.getElementById("pinMsg").textContent = "";
+  const dialog = document.getElementById("pinLoginModal");
+  dialog.showModal();
+
+  document.getElementById("closePinModalBtn").onclick = () => dialog.close();
+  document.getElementById("clearPinBtn").onclick = () => { pinBuffer = ""; updatePinDots(); };
+  document.getElementById("backPinBtn").onclick = () => { pinBuffer = pinBuffer.slice(0, -1); updatePinDots(); };
+
+  dialog.querySelectorAll(".num-btn[data-val]").forEach(b => {
+    b.onclick = () => handleDigit(b.dataset.val);
+  });
+}
+
+function handleDigit(d) {
+  if (pinBuffer.length < 6) {
+    pinBuffer += d;
+    updatePinDots();
+    if (pinBuffer.length === 6) verifyAndLoginPin();
+  }
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 6; i++) {
+    const dot = document.getElementById("dot" + i);
+    if (dot) dot.className = "dot" + (i < pinBuffer.length ? " filled" : "");
+  }
+}
+
+async function verifyAndLoginPin() {
+  const msg = document.getElementById("pinMsg");
+  msg.style.color = "var(--accent)";
+  msg.textContent = "Verifying PIN…";
+
+  try {
+    const pinSnap = await getDoc(doc(db, "teacherPins", pinBuffer));
+    if (!pinSnap.exists()) {
+      throw new Error("Invalid PIN code.");
+    }
+
+    const email = pinSnap.data().email;
+    await signInWithEmailAndPassword(auth, email, pinBuffer);
+    
+    msg.style.color = "var(--success)";
+    msg.textContent = "Sign in successful! Loading…";
+    setTimeout(() => {
+      document.getElementById("pinLoginModal").close();
+    }, 400);
+
+  } catch (err) {
+    msg.style.color = "var(--danger)";
+    msg.textContent = err.message.includes("invalid-credential") ? "Incorrect PIN." : err.message;
+    pinBuffer = "";
+    updatePinDots();
+  }
+}
+
+// Physical Keyboard Listener for PIN Keypad
+window.addEventListener("keydown", (e) => {
+  const dialog = document.getElementById("pinLoginModal");
+  if (!dialog.open) return;
+
+  if (e.key >= "0" && e.key <= "9") handleDigit(e.key);
+  else if (e.key === "Backspace") { pinBuffer = pinBuffer.slice(0, -1); updatePinDots(); }
+  else if (e.key === "Escape") dialog.close();
+});
+
+/* Teacher Set Quick PIN Logic */
+document.getElementById("cancelSetPinBtn").onclick = () => document.getElementById("setPinModal").close();
+document.getElementById("savePinBtn").onclick = async () => {
+  const pin = document.getElementById("newPinInput").value.trim();
+  const confirmPin = document.getElementById("confirmPinInput").value.trim();
+  const errDiv = document.getElementById("setPinError");
+
+  if (!/^\d{6}$/.test(pin)) return errDiv.textContent = "PIN must be exactly 6 numeric digits.";
+  if (pin !== confirmPin) return errDiv.textContent = "PINs do not match.";
+
+  errDiv.style.color = "var(--accent)";
+  errDiv.textContent = "Saving Quick PIN…";
+
+  try {
+    const user = auth.currentUser;
+    if (!user || !user.email) throw new Error("No active teacher session found.");
+
+    // Check if PIN is taken by another account
+    const existing = await getDoc(doc(db, "teacherPins", pin));
+    if (existing.exists() && existing.data().email !== user.email) {
+      throw new Error("This PIN is already used by another account. Please pick a different 6-digit code.");
+    }
+
+    // Link Email & Password credential or update password
+    const cred = EmailAuthProvider.credential(user.email, pin);
+    try {
+      await linkWithCredential(user, cred);
+    } catch (e) {
+      if (e.code === "auth/provider-already-linked" || e.code === "auth/email-already-in-use") {
+        await updatePassword(user, pin);
+      } else {
+        throw e;
+      }
+    }
+
+    // Save PIN lookup record in Firestore
+    await setDoc(doc(db, "teacherPins", pin), {
+      email: user.email,
+      uid: user.uid,
+      updatedAt: serverTimestamp()
+    });
+
+    errDiv.style.color = "var(--success)";
+    errDiv.textContent = "PIN set successfully! You can now use Quick PIN login.";
+    setTimeout(() => {
+      document.getElementById("setPinModal").close();
+      document.getElementById("newPinInput").value = "";
+      document.getElementById("confirmPinInput").value = "";
+      errDiv.textContent = "";
+    }, 1200);
+
+  } catch (err) {
+    errDiv.style.color = "var(--danger)";
+    errDiv.textContent = err.message || "Failed to set PIN.";
+  }
+};
+
+/* Quiz List Dashboard Logic */
 async function loadQuizzes() {
   const list = document.getElementById("quiz-list");
   try {
@@ -203,6 +411,7 @@ async function loadQuizzes() {
   }
 }
 
+/* Results Viewer */
 async function openResults(quizId, title) {
   const dialog = document.getElementById("resultsModal");
   currentQuizTitle = title;
