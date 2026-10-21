@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Teacher Dashboard</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0D1117;color:#E6EAF2;margin:0;padding:20px;color-scheme:dark}
+#app{max-width:900px;margin:auto}header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+h1{color:#A3A6FF;margin:0;font-size:24px}.card{background:#161B22;border:1px solid #2B3441;border-radius:12px;padding:16px;margin-bottom:14px}
+.card h3{margin:0 0 4px}.meta{color:#8D98AA;font-size:14px;margin-bottom:8px}.center{text-align:center;margin-top:15vh}
+.btn{display:inline-block;background:#8B8FFF;color:#0E1020;border:none;padding:9px 16px;border-radius:8px;font-weight:600;cursor:pointer;text-decoration:none;font-size:14px}
+.btn.alt{background:#3A4556;color:#E6EAF2}.btn.danger{background:#7F1D1D;color:#FCA5A5}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+input{width:100%;box-sizing:border-box;padding:8px;background:#0D1117;color:#E6EAF2;border:1px solid #3A4556;border-radius:6px}
+.tag{background:#7F1D1D;color:#FCA5A5;font-size:12px;padding:2px 8px;border-radius:10px}
+table{width:100%;border-collapse:collapse;margin:14px 0}th,td{text-align:left;padding:8px;border-bottom:1px solid #2B3441}th{color:#8D98AA;font-size:13px}
+details{background:#161B22;border:1px solid #2B3441;border-radius:10px;padding:12px;margin-top:14px}summary{cursor:pointer;font-weight:600}
+.q{padding:8px 0;border-bottom:1px solid #2B3441}:focus-visible{outline:2px solid #8B8FFF;outline-offset:2px}
+</style></head><body><div id="app">Loading…</div>
+<script type="module">
+import {auth,db,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged,collection,query,where,getDocs,getDoc,doc,updateDoc,writeBatch} from "./firebase.js";
+const $=s=>document.querySelector(s),app=$("#app");
+const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const plain=s=>String(s||"").replace(/<[^>]*>/g,"");
+const norm=s=>String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+const link=id=>new URL("quiz.html?id="+id,location.href).href;
+const fmt=s=>s==null?"-":Math.floor(s/60)+"m "+(s%60)+"s";
+
+onAuthStateChanged(auth,u=>{(u&&!u.isAnonymous)?route():login();});
+addEventListener("hashchange",()=>{const u=auth.currentUser;if(u&&!u.isAnonymous)route();});
+function login(){
+  app.innerHTML=`<div class="center"><h1>Quiz Teacher Dashboard</h1><p class="meta">Sign in to create quizzes and see results.</p><button class="btn" id="li">Sign in with Google</button></div>`;
+  $("#li").onclick=()=>signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>alert(e.message));
+}
+function route(){const m=location.hash.match(/^#results=([\w-]+)/);m?results(m[1]):list();}
+
+async function list(){
+  app.innerHTML=`<header><h1>My Quizzes</h1><span><a class="btn" href="editor.html">＋ New Quiz</a> <button class="btn alt" id="lo">Sign out</button></span></header><div id="ql">Loading…</div>`;
+  $("#lo").onclick=()=>signOut(auth);
+  let rows;
+  try{
+    const s=await getDocs(query(collection(db,"quizzes"),where("ownerUid","==",auth.currentUser.uid)));
+    rows=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.updatedAt?.seconds||0)-(a.updatedAt?.seconds||0));
+  }catch(e){$("#ql").textContent="Failed to load: "+(e.code||e.message);return;}
+  $("#ql").innerHTML=rows.length?rows.map(q=>`<div class="card"><h3>${esc(q.settings.title)} ${q.published?"":'<span class="tag">closed</span>'}</h3>
+    <div class="meta">${q.questions.length} questions · student link:</div><input readonly aria-label="Student link" value="${esc(link(q.id))}" onclick="this.select()">
+    <div class="row"><button class="btn alt" data-a="copy" data-id="${q.id}">Copy link</button><a class="btn alt" href="editor.html?id=${q.id}">Edit</a><a class="btn" href="#results=${q.id}">Results</a>
+    <button class="btn alt" data-a="toggle" data-id="${q.id}" data-p="${q.published}">${q.published?"Close quiz":"Reopen"}</button><button class="btn danger" data-a="del" data-id="${q.id}">Delete</button></div></div>`).join(""):"<p>No quizzes yet. Click “New Quiz”.</p>";
+  $("#ql").onclick=async e=>{
+    const b=e.target.closest("button[data-a]");if(!b)return;const id=b.dataset.id,a=b.dataset.a;
+    try{
+      if(a==="copy"){try{await navigator.clipboard.writeText(link(id));b.textContent="Copied ✔";}catch(_){prompt("Copy this link:",link(id));}}
+      if(a==="toggle"){await updateDoc(doc(db,"quizzes",id),{published:b.dataset.p!=="true"});list();}
+      if(a==="del"&&confirm("Delete this quiz and ALL its submissions? This cannot be undone.")){await removeQuiz(id);list();}
+    }catch(err){alert("Failed: "+(err.code||err.message));}
+  };
+}
+async function removeQuiz(id){
+  const subs=await getDocs(collection(db,"quizzes",id,"submissions"));
+  for(let i=0;i<subs.docs.length;i+=400){const b=writeBatch(db);subs.docs.slice(i,i+400).forEach(d=>b.delete(d.ref));await b.commit();}
+  const b=writeBatch(db);b.delete(doc(db,"quizKeys",id));b.delete(doc(db,"quizzes",id));await b.commit();
+}
+
+/* ---- grading (teacher's browser, from raw answers + key) ---- */
+function sc(q,k,a,partial){
+  if(a==null||a===""||(Array.isArray(a)&&!a.length))return 0;
+  const cor=k.correct||[];
+  if(q.type==="multiple_choice"||q.type==="drop_list")return cor[0]&&cor[0]===a?1:0;
+  if(q.type==="checkboxes"){if(!cor.length||!Array.isArray(a))return 0;const h=a.filter(v=>cor.includes(v)).length,b=a.length-h;if(!b&&h===cor.length)return 1;return partial?Math.max(0,(h-b)/cor.length):0;}
+  const key=String(k.answerText||"").trim();if(!key)return 0;
+  if(q.type==="number"){const x=+a,y=+key;return isFinite(x)&&isFinite(y)&&Math.abs(x-y)<=1e-9*Math.max(1,Math.abs(y))?1:0;}
+  return key.split("|").some(z=>norm(z)===norm(a))?1:0;
+}
+function grade(Q,K,A){
+  let e=0,t=0;
+  Q.questions.forEach(q=>{const k=K[q.id]||{},p=Number(k.points??q.points??1),pp=isFinite(p)?Math.max(0,p):1;t+=pp;e+=pp*sc(q,k,A[q.id],Q.settings.partialCredit);});
+  return {earned:Math.round(e*100)/100,total:t,pct:t?e/t*100:0};
+}
+async function results(id){
+  app.innerHTML="<p>Loading…</p>";
+  try{
+    const [q,k,s]=await Promise.all([getDoc(doc(db,"quizzes",id)),getDoc(doc(db,"quizKeys",id)),getDocs(collection(db,"quizzes",id,"submissions"))]);
+    if(!q.exists()||q.data().ownerUid!==auth.currentUser.uid){location.hash="";return;}
+    const Q=q.data(),K=k.exists()?k.data().key:{};
+    const rows=s.docs.map(d=>{const x=d.data(),r=grade(Q,K,x.answers||{});return {name:x.name,...r,dur:x.durationSec,at:x.submittedAt&&x.submittedAt.toDate?x.submittedAt.toDate():null};}).sort((a,b)=>b.pct-a.pct);
+    const avg=rows.length?(rows.reduce((t,r)=>t+r.pct,0)/rows.length).toFixed(1):"-";
+    const ans=(qq)=>{const k=K[qq.id]||{};return ["multiple_choice","checkboxes","drop_list"].includes(qq.type)?qq.options.filter(o=>(k.correct||[]).includes(o.id)).map(o=>plain(o.text)).join(", ")||"—":(k.answerText||"—");};
+    app.innerHTML=`<header><h1>${esc(Q.settings.title)}</h1><span><a class="btn alt" href="#">← Back</a> <a class="btn alt" href="editor.html?id=${id}">Edit</a> <button class="btn" id="csv">Download CSV</button></span></header>
+      <div class="meta">${rows.length} submission(s) · class average ${avg}% ${Q.settings.timeLimit?`· time limit ${Q.settings.timeLimit} min`:""}</div>
+      <table><tr><th>#</th><th>Student</th><th>Score</th><th>Points</th><th>Duration</th><th>Submitted</th></tr>
+      ${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${r.pct.toFixed(1)}%</td><td>${r.earned}/${r.total}</td><td>${fmt(r.dur)}</td><td>${r.at?esc(r.at.toLocaleString()):""}</td></tr>`).join("")||'<tr><td colspan="6">No submissions yet.</td></tr>'}</table>
+      <details><summary>Questions &amp; answer key (${Q.questions.length})</summary>${Q.questions.map((qq,i)=>`<div class="q"><b>${i+1}. ${esc(plain(qq.title))}</b><div class="meta">${esc(qq.type)} · ${qq.points??1} pt · answer: ${esc(plain(ans(qq)))}</div></div>`).join("")}</details>`;
+    $("#csv").onclick=()=>{
+      const cell=v=>{v=String(v==null?"":v);if(/^[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};
+      const data=[["Student","Percent","Earned","Total","Duration (s)","Submitted"]].concat(rows.map(r=>[r.name,r.pct.toFixed(1),r.earned,r.total,r.dur,r.at?r.at.toISOString():""]));
+      const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data.map(r=>r.map(cell).join(",")).join("\n")],{type:"text/csv"}));a.download="results.csv";a.click();
+    };
+  }catch(e){app.innerHTML=`<p>Failed to load results: ${esc(e.code||e.message)} <a href="#">Back</a></p>`;}
+}
+</script></body></html>
