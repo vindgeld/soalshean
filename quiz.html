@@ -45,10 +45,17 @@ const QUIZ_ID = new URLSearchParams(location.search).get("id");
 const PREVIEW = false;
 let QUIZ;
 
-const esc0 = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc0 = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 function playerLogic() {
-  const root = document.getElementById("root"), S = QUIZ.settings, R = QUIZ.results, PV = typeof PREVIEW !== "undefined" && PREVIEW;
+  const root = document.getElementById("root");
+  const S = QUIZ?.settings || {};
+  const R = QUIZ?.results || {};
+  const PV = typeof PREVIEW !== "undefined" && PREVIEW;
+
+  // Disable instant feedback pre-submission because keys are stored separately on server
+  S.instantFeedback = false;
+
   let questions = [], answers = {}, checked = {}, idx = 0, timerId, deadline, participant = "", running = false;
   const logKey = "quizmaker_pro_logs";
 
@@ -65,10 +72,10 @@ function playerLogic() {
 
   function init() {
     const attempts = getAttempts();
-    if (!QUIZ.questions || !QUIZ.questions.length) return root.innerHTML = `<h2>${esc(S.title)}</h2><p>This quiz has no questions yet.</p>`;
+    if (!QUIZ.questions || !QUIZ.questions.length) return root.innerHTML = `<h2>${esc(S.title || "Quiz")}</h2><p>This quiz has no questions yet.</p>`;
     if (S.maxAttempts > 0 && attempts >= S.maxAttempts) return root.innerHTML = `<h2>Limit Reached</h2><p>You have reached the maximum allowed attempts (${S.maxAttempts}) for this quiz.</p>`;
     
-    root.innerHTML = `<h1>${esc(S.title)}</h1>
+    root.innerHTML = `<h1>${esc(S.title || "Quiz")}</h1>
       ${PV ? '<div class="meta">Preview mode: attempts are not recorded.</div>' : ""}
       <div class="meta">${QUIZ.questions.length} Questions${S.timeLimit > 0 ? ` • ${S.timeLimit} Mins` : ""}</div>
       ${S.description ? `<p>${rich(S.description)}</p>` : ""}
@@ -121,7 +128,7 @@ function playerLogic() {
   function render() {
     const isOne = S.displayMode === "one", toShow = isOne ? [questions[idx]] : questions;
     let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 style="margin:0">${esc(S.title)}</h2>
+      <h2 style="margin:0">${esc(S.title || "Quiz")}</h2>
       ${S.timeLimit > 0 ? '<span id="timer-disp" class="timer" role="timer"></span>' : ""}
     </div>`;
     if (isOne) html += `<div class="prog" role="progressbar" aria-valuemin="1" aria-valuenow="${idx + 1}" aria-valuemax="${questions.length}"><i style="width:${(idx + 1) / questions.length * 100}%"></i></div>`;
@@ -136,11 +143,11 @@ function playerLogic() {
             q.options.map(o => {
               const type = q.type === "checkboxes" ? "checkbox" : "radio";
               const c = (type === "checkbox" && a && a.includes(o.id)) || (type === "radio" && a === o.id) ? "checked" : "";
-              return `<label class="opt"><input type="${type}" name="${name}" value="${esc(o.id)}" ${c} ${dis}> <span>${rich(o.text)}</span></label>`;
+              return `<label class="opt"><input type="${type}" name="${name}" value="${esc(o.id)}" ${c} ${dis} onchange="window.__updateAns('${q.id}','${q.type}')"> <span>${rich(o.text)}</span></label>`;
             }).join("")
             : q.type === "drop_list" ?
-              `<select name="${name}" aria-label="Answer" ${dis}><option value="">Select...</option>${q.options.map(o => `<option value="${esc(o.id)}" ${a === o.id ? "selected" : ""}>${esc(plain(o.text))}</option>`).join("")}</select>`
-              : `<input type="${q.type === "number" ? "number" : "text"}" name="${name}" value="${esc(a)}" placeholder="Type your answer..." aria-label="Answer" ${q.type === "number" ? 'step="any"' : ""} ${dis}>`
+              `<select name="${name}" aria-label="Answer" ${dis} onchange="window.__updateAns('${q.id}','${q.type}')"><option value="">Select...</option>${q.options.map(o => `<option value="${esc(o.id)}" ${a === o.id ? "selected" : ""}>${esc(plain(o.text))}</option>`).join("")}</select>`
+              : `<input type="${q.type === "number" ? "number" : "text"}" name="${name}" value="${esc(a)}" placeholder="Type your answer..." aria-label="Answer" ${q.type === "number" ? 'step="any"' : ""} ${dis} oninput="window.__updateAns('${q.id}','${q.type}')">`
           }
           <div id="fb_${q.id}" aria-live="polite"></div>
         </fieldset>
@@ -151,28 +158,16 @@ function playerLogic() {
       const q = questions[idx], last = idx === questions.length - 1;
       html += `<div class="meta" style="text-align:center">Question ${idx + 1} of ${questions.length}</div>
         <div class="nav-bar">
-          <button class="btn alt" id="prevBtn" ${idx === 0 ? "disabled" : ""}>Back</button>`;
-      if (S.instantFeedback && !checked[q.id]) {
-        html += `<span style="display:flex;gap:8px">${q.required ? "" : `<button class="btn alt" id="nextBtn">${last ? "Skip & Submit" : "Skip"}</button>`}<button class="btn" id="checkBtn">Check Answer</button></span>`;
-      } else {
-        html += `<button class="btn" id="nextBtn">${last ? "Submit Quiz" : "Next"}</button>`;
-      }
-      html += `</div>`;
+          <button class="btn alt" id="prevBtn" ${idx === 0 ? "disabled" : ""}>Back</button>
+          <button class="btn" id="nextBtn">${last ? "Submit Quiz" : "Next"}</button>
+        </div>`;
     } else {
       html += `<button class="btn" id="submitBtn" style="width:100%">Submit Quiz</button>`;
     }
 
     root.innerHTML = html;
-    if (isOne && checked[questions[idx].id]) showFeedback(questions[idx]);
     tick();
     attachEvents(isOne);
-  }
-
-  function showFeedback(q) {
-    const f = score(q, answers[q.id]), fb = document.getElementById("fb_" + q.id);
-    if (!fb) return;
-    fb.className = "feedback " + (f === 1 ? "ok" : f > 0 ? "mid" : "bad");
-    fb.innerHTML = `<strong>${f === 1 ? "Correct!" : f > 0 ? "Partially correct" : "Incorrect"}</strong>${q.explanation ? `<br><em>${rich(q.explanation)}</em>` : ""}`;
   }
 
   function extractVal(qId, type) {
@@ -182,6 +177,10 @@ function playerLogic() {
     if (type === "multiple_choice") { const c = Array.from(els).find(e => e.checked); return c ? c.value : null; }
     return els[0].value.trim() || null;
   }
+
+  window.__updateAns = (qId, type) => {
+    answers[qId] = extractVal(qId, type);
+  };
 
   function validateCurrent(qs) {
     for (const q of qs) {
@@ -194,7 +193,7 @@ function playerLogic() {
         if (f) f.focus();
         return false;
       }
-      if (fb && !checked[q.id]) { fb.className = ""; fb.textContent = ""; }
+      if (fb) { fb.className = ""; fb.textContent = ""; }
       answers[q.id] = v;
     }
     return true;
@@ -242,22 +241,19 @@ function playerLogic() {
       return;
     }
     const q = questions[idx], last = idx === questions.length - 1;
-    const p = document.getElementById("prevBtn"), n = document.getElementById("nextBtn"), c = document.getElementById("checkBtn");
-    if (p) p.onclick = () => { if (!checked[q.id]) answers[q.id] = extractVal(q.id, q.type); idx--; render(); };
-    if (n) n.onclick = () => { if (!checked[q.id] && !validateCurrent([q])) return; if (last) submit(); else { idx++; render(); } };
-    if (c) c.onclick = () => { if (!validateCurrent([q])) return; checked[q.id] = true; render(); };
+    const p = document.getElementById("prevBtn"), n = document.getElementById("nextBtn");
+    if (p) p.onclick = () => { answers[q.id] = extractVal(q.id, q.type); idx--; render(); };
+    if (n) n.onclick = () => { if (!validateCurrent([q])) return; if (last) submit(); else { idx++; render(); } };
   }
 
   function submit(force) {
     const cur = S.displayMode === "one" ? [questions[idx]] : questions;
     if (force) {
       cur.forEach(q => {
-        if (!checked[q.id]) {
-          const v = extractVal(q.id, q.type);
-          if (v !== null) answers[q.id] = v;
-        }
+        const v = extractVal(q.id, q.type);
+        if (v !== null) answers[q.id] = v;
       });
-    } else if (!cur.every(q => checked[q.id]) && !validateCurrent(cur.filter(q => !checked[q.id]))) {
+    } else if (!validateCurrent(cur)) {
       return;
     }
 
@@ -360,7 +356,7 @@ function playerLogic() {
       document.getElementById("dlBtn").onclick = () => {
         const cell = v => '"' + String(v).replace(/"/g, '""') + '"';
         const rows = [
-          ["Quiz", S.title],
+          ["Quiz", S.title || "Quiz"],
           ["Name", participant || "Anonymous"],
           ["Score %", shown],
           ["Points", earned + "/" + total],
@@ -371,7 +367,7 @@ function playerLogic() {
 
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([rows.map(r => r.map(cell).join(",")).join("\n")], { type: "text/csv" }));
-        a.download = (S.title || "quiz").replace(/[^\w]+/g, "_") + "_result.csv";
+        a.download = ((S.title || "quiz").replace(/[^\w]+/g, "_")) + "_result.csv";
         a.click();
       };
 
@@ -399,12 +395,15 @@ function playerLogic() {
     if (!qs.exists()) throw new Error("Quiz document does not exist");
 
     QUIZ = qs.data();
+    if (!QUIZ.settings) QUIZ.settings = {};
+    if (!QUIZ.results) QUIZ.results = {};
+
     QUIZ.settings.maxAttempts = 0;
     QUIZ.settings.webhookUrl = "";
     QUIZ.results.allowRetake = false;
 
     if (mine.exists()) {
-      box.innerHTML = `<h2>${esc0(QUIZ.settings.title)}</h2><p>You already submitted this quiz as <b>${esc0(mine.data().name)}</b>. Your teacher will grade and share your results.</p>`;
+      box.innerHTML = `<h2>${esc0(QUIZ.settings.title || "Quiz")}</h2><p>You already submitted this quiz as <b>${esc0(mine.data().name)}</b>. Your teacher will grade and share your results.</p>`;
       return;
     }
 
@@ -412,7 +411,6 @@ function playerLogic() {
       done: false,
       send: async ({ name, answers }) => {
         const t0 = window.__t0 || Date.now();
-        // Fallback to "Anonymous" if student name is empty, ensuring name size > 0 to pass Firestore rules
         const cleanName = (typeof name === "string" && name.trim()) ? name.trim().slice(0, 60) : "Anonymous";
         
         try {
@@ -427,7 +425,6 @@ function playerLogic() {
           if (!(await getDoc(subRef)).exists()) throw e;
         }
 
-        // Safely fetch answer key document
         const keySnap = await getDoc(doc(db, "quizKeys", QUIZ_ID));
         return keySnap.exists() && keySnap.data() ? (keySnap.data().key || {}) : {};
       },
