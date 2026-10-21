@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Editor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+<style>
+:root {
+  --bg: #0D1117; --card: #161B22; --border: #2B3441;
+  --accent: #8B8FFF; --text: #E6EAF2; --muted: #8D98AA; --danger: #F87171; --success: #34D399;
+}
+body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; color-scheme: dark; }
+.container { max-width: 880px; margin: auto; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+.btn { background: var(--accent); color: #0E1020; border: none; padding: 10px 18px; font-weight: 600; border-radius: 8px; cursor: pointer; text-decoration: none; font-size: 14px; transition: .15s; }
+.btn:hover { opacity: 0.9; }
+.btn.alt { background: #3A4556; color: var(--text); }
+.btn.danger { background: rgba(248,113,113,.18); color: var(--danger); border: 1px solid var(--danger); }
+input[type=text], input[type=number], select, textarea { width: 100%; padding: 10px; border: 1px solid #3A4556; border-radius: 6px; background: var(--bg); color: var(--text); box-sizing: border-box; margin-top: 6px; font-size: 14px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.opt-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.opt-row input[type=radio], .opt-row input[type=checkbox] { transform: scale(1.2); accent-color: var(--accent); }
+.chk-label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin-top: 8px; }
+
+dialog { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 460px; width: 90%; }
+dialog::backdrop { background: rgba(0,0,0,0.75); backdrop-filter: blur(3px); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <a href="index.html" class="btn alt">← Dashboard</a>
+    <div>
+      <span id="pin-display" style="font-family:monospace;font-weight:bold;margin-right:12px;color:var(--accent)"></span>
+      <button class="btn" id="saveBtn">💾 Save Quiz</button>
+    </div>
+  </header>
+
+  <!-- Settings -->
+  <div class="card">
+    <h2 style="color:var(--accent);margin-top:0">Quiz Settings</h2>
+    <label>Quiz Title
+      <input type="text" id="quizTitle" placeholder="e.g., Final Physics Exam">
+    </label>
+    <br><br>
+    <label>Description / Instructions
+      <textarea id="quizDesc" rows="2" placeholder="Instructions for students..."></textarea>
+    </label>
+    <br><br>
+    <div class="grid-2">
+      <label>Time Limit (Minutes, 0 = Unlimited)
+        <input type="number" id="timeLimit" value="0" min="0">
+      </label>
+      <label>Display Mode
+        <select id="displayMode">
+          <option value="one">One Question per Page</option>
+          <option value="all">All Questions on One Page</option>
+        </select>
+      </label>
+    </div>
+    <div class="grid-3" style="margin-top:16px">
+      <label class="chk-label"><input type="checkbox" id="shuffleQs"> Shuffle Questions</label>
+      <label class="chk-label"><input type="checkbox" id="shuffleAs"> Shuffle Answers</label>
+      <label class="chk-label"><input type="checkbox" id="partialCred"> Partial Credit</label>
+    </div>
+    <div class="grid-3" style="margin-top:16px">
+      <label class="chk-label"><input type="checkbox" id="showAnswers" checked> Show Review Page</label>
+      <label class="chk-label"><input type="checkbox" id="allowRetake"> Allow Retakes</label>
+      <label class="chk-label"><input type="checkbox" id="allowCsvDownload" checked> Allow Student CSV Download</label>
+    </div>
+  </div>
+
+  <!-- Score Ranges -->
+  <div class="card">
+    <h3 style="color:var(--accent);margin-top:0">Score Feedback Ranges</h3>
+    <div id="ranges-list"></div>
+    <button class="btn alt" id="addRangeBtn" style="margin-top:10px">+ Add Range Message</button>
+  </div>
+
+  <!-- Questions -->
+  <div id="questions-list"></div>
+
+  <button class="btn alt" id="addQBtn" style="width:100%;padding:14px;font-size:16px">+ Add Question</button>
+</div>
+
+<!-- Modal: Confirm Delete Question -->
+<dialog id="delQModal">
+  <h3>Delete Question</h3>
+  <p style="color:var(--muted);margin:16px 0">Are you sure you want to delete this question? This action cannot be undone.</p>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+    <button class="btn alt" id="cancelDelQ">Cancel</button>
+    <button class="btn danger" id="confirmDelQ">Delete</button>
+  </div>
+</dialog>
+
+<!-- Modal: Quiz Saved Successfully -->
+<dialog id="savedModal">
+  <h2 style="color:var(--success)">Saved Successfully! ✔</h2>
+  <p style="color:var(--muted)">Your quiz is now published and ready for students.</p>
+  <div style="background:var(--bg);padding:12px;border:1px solid var(--border);border-radius:8px;margin:16px 0;text-align:center">
+    <span style="color:var(--muted);font-size:13px">Student PIN Code</span>
+    <div id="savedPinCode" style="font-size:28px;font-family:monospace;font-weight:bold;color:var(--accent)">123456</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <button class="btn" id="copyLinkBtn">🔗 Copy Student Link</button>
+    <button class="btn alt" id="backDashBtn">Back to Dashboard</button>
+  </div>
+</dialog>
+
+<script type="module">
+import { auth, db, doc, getDoc, setDoc, serverTimestamp, onAuthStateChanged } from "./firebase.js";
+
+const params = new URLSearchParams(location.search);
+let quizId = params.get("id") || "q_" + Math.random().toString(36).substring(2, 10);
+let existingPin = null;
+let questionToDeleteIdx = null;
+
+let quiz = {
+  settings: { title: "Untitled Quiz", description: "", timeLimit: 0, displayMode: "one", shuffleQuestions: false, shuffleAnswers: false, partialCredit: false, published: true },
+  results: { showAnswers: true, allowRetake: false, allowCsvDownload: true },
+  ranges: [{ min: 0, max: 100, msg: "Thank you for completing the quiz! Your score is {score}." }],
+  questions: []
+};
+
+const safeHTML = (str) => DOMPurify.sanitize(String(str || ""));
+function genPin() { return Math.floor(100000 + Math.random() * 900000).toString(); }
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user || !user.email) {
+    alert("Please sign in from the dashboard first.");
+    location.href = "index.html";
+    return;
+  }
+  await loadQuiz();
+});
+
+async function loadQuiz() {
+  if (params.get("id")) {
+    const [qSnap, kSnap] = await Promise.all([
+      getDoc(doc(db, "quizzes", quizId)),
+      getDoc(doc(db, "quizKeys", quizId))
+    ]);
+
+    if (qSnap.exists()) {
+      const qData = qSnap.data();
+      existingPin = qData.pinCode || null;
+      quiz.settings = { ...quiz.settings, ...(qData.settings || {}) };
+      quiz.results = { ...quiz.results, ...(qData.results || {}) };
+      quiz.ranges = qData.ranges || quiz.ranges;
+      quiz.questions = qData.questions || [];
+
+      if (kSnap.exists() && kSnap.data().key) {
+        const keys = kSnap.data().key;
+        quiz.questions.forEach(q => {
+          const k = keys[q.id];
+          if (k) {
+            if (k.answerText) q.answerText = k.answerText;
+            if (k.explanation) q.explanation = k.explanation;
+            if (k.correct) q.options?.forEach(o => o.isCorrect = k.correct.includes(o.id));
+          }
+        });
+      }
+    }
+  }
+
+  if (!existingPin) existingPin = genPin();
+  document.getElementById("pin-display").textContent = "PIN: " + existingPin;
+  document.getElementById("quizTitle").value = quiz.settings.title || "";
+  document.getElementById("quizDesc").value = quiz.settings.description || "";
+  document.getElementById("timeLimit").value = quiz.settings.timeLimit || 0;
+  document.getElementById("displayMode").value = quiz.settings.displayMode || "one";
+  document.getElementById("shuffleQs").checked = !!quiz.settings.shuffleQuestions;
+  document.getElementById("shuffleAs").checked = !!quiz.settings.shuffleAnswers;
+  document.getElementById("partialCred").checked = !!quiz.settings.partialCredit;
+  document.getElementById("showAnswers").checked = !!quiz.results.showAnswers;
+  document.getElementById("allowRetake").checked = !!quiz.results.allowRetake;
+  document.getElementById("allowCsvDownload").checked = quiz.results.allowCsvDownload !== false;
+
+  renderRanges();
+  renderQuestions();
+}
+
+function renderRanges() {
+  const container = document.getElementById("ranges-list");
+  container.innerHTML = quiz.ranges.map((r, idx) => `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+      <input type="number" value="${r.min}" style="width:70px" placeholder="Min %" onchange="window.__upR(${idx},'min',this.value)">
+      <span>% to</span>
+      <input type="number" value="${r.max}" style="width:70px" placeholder="Max %" onchange="window.__upR(${idx},'max',this.value)">
+      <span>%</span>
+      <input type="text" value="${safeHTML(r.msg)}" placeholder="Feedback message..." onchange="window.__upR(${idx},'msg',this.value)">
+      <button class="btn danger" onclick="window.__delR(${idx})">✕</button>
+    </div>
+  `).join('');
+}
+
+window.__upR = (i, f, v) => { quiz.ranges[i][f] = f === 'msg' ? v : Number(v); };
+window.__delR = i => { quiz.ranges.splice(i, 1); renderRanges(); };
+document.getElementById("addRangeBtn").onclick = () => { quiz.ranges.push({ min: 0, max: 100, msg: "Your score: {score}." }); renderRanges(); };
+
+function renderQuestions() {
+  const container = document.getElementById("questions-list");
+  container.innerHTML = quiz.questions.map((q, qIdx) => `
+    <div class="card" id="q_${qIdx}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <strong>Question ${qIdx + 1}</strong>
+        <div style="display:flex;gap:6px">
+          <button class="btn alt" onclick="window.__moveQ(${qIdx}, -1)" ${qIdx === 0 ? 'disabled' : ''}>▲</button>
+          <button class="btn alt" onclick="window.__moveQ(${qIdx}, 1)" ${qIdx === quiz.questions.length - 1 ? 'disabled' : ''}>▼</button>
+          <button class="btn danger" onclick="window.__promptDelQ(${qIdx})">Delete Question</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <label>Question Type
+          <select onchange="window.__upQ(${qIdx}, 'type', this.value); window.renderQuestions()">
+            <option value="multiple_choice" ${q.type === 'multiple_choice' ? 'selected' : ''}>Multiple Choice</option>
+            <option value="checkboxes" ${q.type === 'checkboxes' ? 'selected' : ''}>Checkboxes (Multi-select)</option>
+            <option value="drop_list" ${q.type === 'drop_list' ? 'selected' : ''}>Dropdown List</option>
+            <option value="text" ${q.type === 'text' ? 'selected' : ''}>Short Text</option>
+            <option value="number" ${q.type === 'number' ? 'selected' : ''}>Numeric</option>
+          </select>
+        </label>
+        <label>Points
+          <input type="number" value="${q.points ?? 1}" min="0" onchange="window.__upQ(${qIdx}, 'points', Number(this.value))">
+        </label>
+      </div>
+
+      <label style="margin-top:12px;display:block">Question Title / Prompt
+        <input type="text" value="${safeHTML(q.title)}" onchange="window.__upQ(${qIdx}, 'title', this.value)" placeholder="Enter question prompt...">
+      </label>
+
+      <div class="grid-2" style="margin-top:12px">
+        <label>Image URL (Optional)
+          <input type="text" value="${safeHTML(q.imageUrl || '')}" onchange="window.__upQ(${qIdx}, 'imageUrl', this.value)" placeholder="https://...">
+        </label>
+        <label>Explanation / Feedback
+          <input type="text" value="${safeHTML(q.explanation || '')}" onchange="window.__upQ(${qIdx}, 'explanation', this.value)" placeholder="Explanation shown during review...">
+        </label>
+      </div>
+
+      <label class="chk-label" style="margin-top:12px">
+        <input type="checkbox" ${q.required ? 'checked' : ''} onchange="window.__upQ(${qIdx}, 'required', this.checked)"> Mandatory Question
+      </label>
+
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+        ${['multiple_choice', 'checkboxes', 'drop_list'].includes(q.type) ? `
+          <label>Answer Options:</label>
+          ${(q.options || []).map((o, oIdx) => `
+            <div class="opt-row">
+              <input type="${q.type === 'checkboxes' ? 'checkbox' : 'radio'}" name="correct_${qIdx}" ${o.isCorrect ? 'checked' : ''} onchange="window.__setCorrect(${qIdx}, ${oIdx}, this.checked)">
+              <input type="text" value="${safeHTML(o.text)}" onchange="window.__upOpt(${qIdx}, ${oIdx}, this.value)" placeholder="Option text">
+              <button class="btn danger" onclick="window.__delOpt(${qIdx}, ${oIdx})">✕</button>
+            </div>
+          `).join('')}
+          <button class="btn alt" style="margin-top:6px" onclick="window.__addOpt(${qIdx})">+ Add Option</button>
+        ` : `
+          <label>Correct Answer Key (For auto-grading):
+            <input type="text" value="${safeHTML(q.answerText || '')}" onchange="window.__upQ(${qIdx}, 'answerText', this.value)" placeholder="${q.type === 'number' ? 'e.g., 42' : 'e.g., Paris | City of Light (use | for alternatives)'}">
+          </label>
+        `}
+      </div>
+    </div>
+  `).join('');
+}
+
+window.renderQuestions = renderQuestions;
+window.__moveQ = (i, dir) => {
+  const target = i + dir;
+  if (target < 0 || target >= quiz.questions.length) return;
+  const temp = quiz.questions[i];
+  quiz.questions[i] = quiz.questions[target];
+  quiz.questions[target] = temp;
+  renderQuestions();
+};
+
+window.__promptDelQ = (i) => {
+  questionToDeleteIdx = i;
+  document.getElementById("delQModal").showModal();
+};
+
+document.getElementById("cancelDelQ").onclick = () => document.getElementById("delQModal").close();
+document.getElementById("confirmDelQ").onclick = () => {
+  if (questionToDeleteIdx !== null) {
+    quiz.questions.splice(questionToDeleteIdx, 1);
+    questionToDeleteIdx = null;
+    renderQuestions();
+  }
+  document.getElementById("delQModal").close();
+};
+
+window.__upQ = (i, f, v) => { quiz.questions[i][f] = v; };
+window.__setCorrect = (qI, oI, checked) => {
+  if (quiz.questions[qI].type === "checkboxes") {
+    quiz.questions[qI].options[oI].isCorrect = checked;
+  } else {
+    quiz.questions[qI].options.forEach((o, idx) => o.isCorrect = (idx === oI));
+  }
+};
+window.__upOpt = (qI, oI, v) => { quiz.questions[qI].options[oI].text = v; };
+window.__delOpt = (qI, oI) => { quiz.questions[qI].options.splice(oI, 1); renderQuestions(); };
+window.__addOpt = qI => {
+  if (!quiz.questions[qI].options) quiz.questions[qI].options = [];
+  quiz.questions[qI].options.push({ id: "opt_" + Math.random().toString(36).substring(2, 7), text: "", isCorrect: false });
+  renderQuestions();
+};
+
+document.getElementById("addQBtn").onclick = () => {
+  quiz.questions.push({
+    id: "q_" + Math.random().toString(36).substring(2, 7),
+    title: "",
+    type: "multiple_choice",
+    points: 1,
+    required: true,
+    options: [{ id: "opt_1", text: "", isCorrect: true }]
+  });
+  renderQuestions();
+};
+
+document.getElementById("saveBtn").onclick = async () => {
+  quiz.settings.title = document.getElementById("quizTitle").value.trim() || "Untitled Quiz";
+  quiz.settings.description = document.getElementById("quizDesc").value.trim();
+  quiz.settings.timeLimit = parseInt(document.getElementById("timeLimit").value, 10) || 0;
+  quiz.settings.displayMode = document.getElementById("displayMode").value;
+  quiz.settings.shuffleQuestions = document.getElementById("shuffleQs").checked;
+  quiz.settings.shuffleAnswers = document.getElementById("shuffleAs").checked;
+  quiz.settings.partialCredit = document.getElementById("partialCred").checked;
+  quiz.results.showAnswers = document.getElementById("showAnswers").checked;
+  quiz.results.allowRetake = document.getElementById("allowRetake").checked;
+  quiz.results.allowCsvDownload = document.getElementById("allowCsvDownload").checked;
+
+  const cleanQuestions = JSON.parse(JSON.stringify(quiz.questions));
+  const keysMap = {};
+
+  cleanQuestions.forEach(q => {
+    keysMap[q.id] = {
+      correct: q.options?.filter(o => o.isCorrect).map(o => o.id) || [],
+      answerText: q.answerText || "",
+      explanation: q.explanation || ""
+    };
+    q.options?.forEach(o => delete o.isCorrect);
+    delete q.answerText;
+    delete q.explanation;
+  });
+
+  const quizPayload = {
+    title: quiz.settings.title,
+    description: quiz.settings.description,
+    questionCount: cleanQuestions.length,
+    published: true,
+    pinCode: existingPin,
+    updatedAt: serverTimestamp(),
+    settings: quiz.settings,
+    results: quiz.results,
+    ranges: quiz.ranges,
+    questions: cleanQuestions
+  };
+
+  try {
+    await Promise.all([
+      setDoc(doc(db, "quizzes", quizId), quizPayload),
+      setDoc(doc(db, "quizKeys", quizId), { key: keysMap, updatedAt: serverTimestamp() }),
+      setDoc(doc(db, "quizCodes", existingPin), { quizId: quizId, title: quizPayload.title, createdAt: serverTimestamp() })
+    ]);
+
+    document.getElementById("savedPinCode").textContent = existingPin;
+    const studentUrl = `${location.origin}${location.pathname.replace('editor.html', 'quiz.html')}?pin=${existingPin}`;
+    
+    document.getElementById("copyLinkBtn").onclick = () => {
+      navigator.clipboard.writeText(studentUrl);
+      alert("Link copied to clipboard!");
+    };
+    document.getElementById("backDashBtn").onclick = () => location.href = "index.html";
+
+    document.getElementById("savedModal").showModal();
+  } catch (err) {
+    alert("Failed to save quiz: " + err.message);
+  }
+};
+</script>
+</body>
+</html>
