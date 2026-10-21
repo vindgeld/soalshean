@@ -4,6 +4,10 @@ import {
   signInAnonymously,
   signInWithPopup,
   GoogleAuthProvider,
+  EmailAuthProvider,
+  linkWithCredential,
+  signInWithEmailAndPassword,
+  updatePassword,
   signOut,
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -41,6 +45,10 @@ export {
   signInAnonymously,
   signInWithPopup,
   GoogleAuthProvider,
+  EmailAuthProvider,
+  linkWithCredential,
+  signInWithEmailAndPassword,
+  updatePassword,
   signOut,
   onAuthStateChanged,
   doc,
@@ -55,4 +63,3 @@ export {
   getDocs,
   serverTimestamp
 };
-
