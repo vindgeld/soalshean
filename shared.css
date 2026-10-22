@@ -1,0 +1,13 @@
+:focus-visible { outline: 2px solid #8B8FFF; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (max-width: 640px) {
+  body { padding: 12px !important; }
+  .app { padding: 16px !important; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr !important; }
+  #ranges-list > div { flex-wrap: wrap; }
+  .nav-bar { position: sticky; bottom: 0; background: var(--card-bg); padding: 10px 0; }
+  #timer-disp { position: fixed; top: 8px; right: 8px; z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+  .quiz-card .btn { flex: 1 1 auto; justify-content: center; }
+  dialog { max-width: 96vw !important; }
+  table { font-size: 12px; }
+}
