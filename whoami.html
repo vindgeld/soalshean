@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>soalShean diagnostics</title>
+</head>
+<body style="font:15px system-ui;background:#0D1117;color:#E6EAF2;padding:16px">
+<h3 style="color:#8B8FFF">soalShean diagnostics</h3>
+<pre id="o" style="white-space:pre-wrap;line-height:1.6">Loading…</pre>
+<button id="g" style="padding:10px 18px;border-radius:8px;border:0;background:#8B8FFF;font-weight:600">Sign in with Google</button>
+<script type="module">
+import { auth, db, doc, getDoc, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "./firebase.js";
+const o = document.getElementById("o");
+const log = t => o.textContent += "\n" + t;
+document.getElementById("g").onclick = () => signInWithPopup(auth, new GoogleAuthProvider());
+
+onAuthStateChanged(auth, async u => {
+  o.textContent = "App Firebase project: " + auth.app.options.projectId;
+  if (!u) return log("Not signed in. Tap the button below.");
+  const t = await u.getIdTokenResult(true);
+  log("email: " + u.email);
+  log("token email_verified: " + t.claims.email_verified);
+  log("sign-in provider: " + t.signInProvider);
+  const checks = [
+    ["teachers/<your email>", ["teachers", u.email]],
+    ["quizKeys read (teacher only)", ["quizKeys", "_probe"]]
+  ];
+  for (const [label, path] of checks) {
+    try {
+      const s = await getDoc(doc(db, ...path));
+      log(label + ": ALLOWED" + (path[0] === "teachers" ? (s.exists() ? " - document exists" : " - DOCUMENT NOT FOUND") : ""));
+    } catch (e) { log(label + ": DENIED (" + e.code + ")"); }
+  }
+});
+</script>
+</body>
+</html>
