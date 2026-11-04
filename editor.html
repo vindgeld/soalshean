@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Editor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+
+<link rel="stylesheet" href="shared.css">
+
+</head>
+<body>
+<div class="container">
+  <header>
+    <a href="index.html" class="btn alt">← Dashboard</a>
+    <div>
+      <span id="pin-display" style="font-family:monospace;font-weight:bold;margin-right:5px;color:var(--accent)"></span>
+      <button class="btn alt" id="settingsBtn" title="Quiz settings" style="margin-right:1px">Settings</button>
+      <button class="btn" id="saveBtn">Save Quiz</button>
+    </div>
+  </header>
+
+  <!-- Settings -->
+  <div class="card">
+    <h2 style="color:var(--accent);margin-top:0">Quiz Settings</h2>
+    <label>Quiz Title
+      <input type="text" id="quizTitle" placeholder="e.g., Final Physics Exam">
+    </label>
+    <br><br>
+    <label>Description / Instructions
+      <textarea id="quizDesc" rows="2" placeholder="Instructions for students..."></textarea>
+    </label>
+    <p id="settingsSummary" style="color:var(--muted);font-size:13px;margin:14px 0 0;cursor:pointer" title="Click to open full settings"></p>
+  </div>
+
+  <!-- Questions -->
+  <div id="questions-list"></div>
+
+  <button class="btn alt" id="addQBtn" style="width:100%;padding:14px;font-size:16px">+ Add Question</button>
+  <button class="btn alt" id="importBtn" style="width:100%;margin-top:10px">📄 Import from PDF / Word / Text file</button>
+  <button class="btn alt" id="bulkBtn" style="width:100%;margin-top:10px">📋 Bulk Import Questions</button>
+</div>
+
+<dialog id="settingsModal" style="max-width:560px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <h3 style="margin:0;color:var(--accent)">Quiz Settings</h3>
+    <button class="btn alt" id="settingsCloseX" style="padding:4px 10px">✕</button>
+  </div>
+  <div style="max-height:70vh;overflow-y:auto;padding-right:4px">
+    <div class="grid-2">
+      <label>Time Limit (Minutes, 0 = Unlimited)
+        <input type="number" id="timeLimit" value="0" min="0">
+      </label>
+      <label>Display Mode
+        <select id="displayMode">
+          <option value="one">One Question per Page</option>
+          <option value="all">All Questions on One Page</option>
+        </select>
+      </label>
+    </div>
+    <div class="grid-3" style="margin-top:16px">
+      <label class="chk-label"><input type="checkbox" id="shuffleQs"> Shuffle Questions</label>
+      <label class="chk-label"><input type="checkbox" id="shuffleAs"> Shuffle Answers</label>
+      <label class="chk-label"><input type="checkbox" id="partialCred"> Partial Credit</label>
+    </div>
+    <div class="grid-3" style="margin-top:16px">
+      <label class="chk-label"><input type="checkbox" id="showAnswers" checked> Show Review Page</label>
+      <label class="chk-label"><input type="checkbox" id="allowRetake"> Allow Retakes</label>
+      <label class="chk-label"><input type="checkbox" id="allowCsvDownload" checked> Allow Student CSV Download</label>
+    </div>
+
+    <h3 style="color:var(--accent);margin:20px 0 0">Availability (optional)</h3>
+    <div class="grid-2">
+      <label>Opens at <input type="datetime-local" id="opensAt"></label>
+      <label>Closes at <input type="datetime-local" id="closesAt"></label>
+    </div>
+
+    <h3 style="color:var(--accent);margin:20px 0 0">Score Feedback Ranges</h3>
+    <div id="ranges-list"></div>
+    <button class="btn alt" id="addRangeBtn" style="margin-top:10px">+ Add Range Message</button>
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-top:16px">
+    <button class="btn" id="settingsDoneBtn">Done</button>
+  </div>
+</dialog>
+
+<dialog id="importModal" style="max-width:720px;width:94%">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+    <h3>Import from document</h3>
+    <button class="btn alt" id="impClose" aria-label="Close">✕</button>
+  </div>
+  <p style="color:var(--muted);font-size:13px;line-height:1.5;margin:8px 0 12px">
+    Choose a PDF, Word (.docx) or text file. Questions are read <strong>in your browser</strong>; the file is never uploaded.
+    You review everything below before it is added to the quiz.
+  </p>
+  <input type="file" id="impFile" accept=".pdf,.docx,.txt,.md" style="width:100%;color:var(--text)">
+  <div id="impStatus" role="status" style="font-size:13px;color:var(--muted);margin-top:10px"></div>
+
+  <div id="impBody" hidden>
+    <div class="grid-2" style="margin-top:12px;align-items:end">
+      <label style="font-size:13px;color:var(--muted)">Default points per question
+        <input type="number" id="impPoints" min="0" step="0.5" value="1">
+      </label>
+      <div id="impSummary" style="font-size:14px;font-weight:600"></div>
+    </div>
+    <label class="chk-label" id="impReplaceWrap" hidden><input type="checkbox" id="impReplace"> <span id="impReplaceTxt"></span></label>
+    <label class="chk-label" id="impTitleWrap" hidden><input type="checkbox" id="impUseTitle" checked> <span id="impTitleTxt"></span></label>
+    <div style="display:flex;gap:8px;margin:12px 0 8px;flex-wrap:wrap">
+      <button class="btn alt" id="impAll" type="button">Select all</button>
+      <button class="btn alt" id="impNoWarn" type="button">Untick questions needing attention</button>
+    </div>
+    <div id="impList" style="max-height:42vh;overflow:auto;padding-right:4px"></div>
+  </div>
+
+  <details id="impRawWrap" style="margin-top:12px" hidden>
+    <summary style="cursor:pointer;font-size:13px;color:var(--muted)">Extracted text: fix anything the reader misunderstood, then Re-parse</summary>
+    <textarea id="impRaw" rows="9" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
+    <button class="btn alt" id="impReparse" type="button" style="margin-top:8px">Re-parse</button>
+  </details>
+
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px">
+    <button class="btn alt" id="impCancel">Cancel</button>
+    <button class="btn" id="impAdd" disabled>Add to quiz</button>
+  </div>
+</dialog>
+
+<dialog id="bulkModal">
+  <h3>Bulk Import</h3>
+  <p style="color:var(--muted);font-size:13px;line-height:1.5">Separate questions with a blank line. Options as <code>A) text</code>; mark correct ones with <code>*</code> (<code>*B) text</code>). For a text question add <code>Answer: Paris | paris</code>. Several * = checkboxes.</p>
+  <textarea id="bulkText" rows="10" placeholder="1. Capital of France?&#10;A) Rome&#10;*B) Paris&#10;C) Madrid"></textarea>
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
+    <button class="btn alt" id="bulkCancel">Cancel</button><button class="btn" id="bulkOk">Import</button>
+  </div>
+</dialog>
+
+<!-- Modal: Confirm Delete Question -->
+<dialog id="delQModal">
+  <h3>Delete Question</h3>
+  <p style="color:var(--muted);margin:16px 0">Are you sure you want to delete this question? This action cannot be undone.</p>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+    <button class="btn alt" id="cancelDelQ">Cancel</button>
+    <button class="btn danger" id="confirmDelQ">Delete</button>
+  </div>
+</dialog>
+
+<!-- Modal: Quiz Saved Successfully -->
+<dialog id="savedModal">
+  <h2 style="color:var(--success)">Saved Successfully! ✔</h2>
+  <p style="color:var(--muted)">Your quiz is now published and ready for students.</p>
+  <div style="background:var(--bg);padding:12px;border:1px solid var(--border);border-radius:8px;margin:16px 0;text-align:center">
+    <span style="color:var(--muted);font-size:13px">Student PIN Code</span>
+    <div id="savedPinCode" style="font-size:28px;font-family:monospace;font-weight:bold;color:var(--accent)">123456</div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <button class="btn" id="copyLinkBtn">🔗 Copy Student Link</button>
+    <button class="btn alt" id="backDashBtn">Back to Dashboard</button>
+  </div>
+</dialog>
+
+<script type="module">
+import { auth, db, doc, getDoc, setDoc, serverTimestamp, onAuthStateChanged, writeBatch } from "./firebase.js";
+import { esc, toast } from "./utils.js";
+import { extractText, parseQuizText } from "./importer.js";
+
+const params = new URLSearchParams(location.search);
+let quizId = params.get("id") || "q_" + Math.random().toString(36).substring(2, 10);
+let existingPin = null;
+let questionToDeleteIdx = null;
+let dirty = false, ready = false;
+const rnd = () => Math.random().toString(36).substring(2, 7);
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+document.addEventListener("input", () => { if (ready) dirty = true; });
+async function freshPin() {
+  for (let i = 0; i < 10; i++) { const p = genPin(); if (!(await getDoc(doc(db, "quizCodes", p))).exists()) return p; }
+  throw new Error("Could not allocate a unique PIN, try again.");
+}
+
+let quiz = {
+  settings: { title: "Untitled Quiz", description: "", timeLimit: 0, displayMode: "one", shuffleQuestions: false, shuffleAnswers: false, partialCredit: false, published: true },
+  results: { showAnswers: true, allowRetake: false, allowCsvDownload: true },
+  ranges: [{ min: 0, max: 100, msg: "Thank you for completing the quiz! Your score is {score}." }],
+  questions: []
+};
+
+
+function genPin() { return Math.floor(100000 + Math.random() * 900000).toString(); }
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user || !user.email) {
+    toast("Please sign in from the dashboard first.", true);
+    setTimeout(() => location.href = "index.html", 1800);
+    return;
+  }
+  try { await loadQuiz(); } catch (e) { toast("Failed to load quiz: " + e.message, true); document.getElementById("saveBtn").disabled = true; }
+});
+
+async function loadQuiz() {
+  if (params.get("id")) {
+    const [qSnap, kSnap] = await Promise.all([
+      getDoc(doc(db, "quizzes", quizId)),
+      getDoc(doc(db, "quizKeys", quizId))
+    ]);
+
+    if (qSnap.exists()) {
+      const qData = qSnap.data();
+      existingPin = qData.pinCode || null;
+      quiz.published = qData.published ?? true;
+      quiz.settings = { ...quiz.settings, ...(qData.settings || {}) };
+      quiz.results = { ...quiz.results, ...(qData.results || {}) };
+      quiz.ranges = qData.ranges || quiz.ranges;
+      quiz.questions = qData.questions || [];
+
+      if (kSnap.exists() && kSnap.data().key) {
+        const keys = kSnap.data().key;
+        quiz.questions.forEach(q => {
+          const k = keys[q.id];
+          if (k) {
+            if (k.answerText) q.answerText = k.answerText;
+            if (k.explanation) q.explanation = k.explanation;
+            if (k.correct) q.options?.forEach(o => o.isCorrect = k.correct.includes(o.id));
+          }
+        });
+      }
+    }
+  }
+
+  if (!existingPin) existingPin = await freshPin();
+  document.getElementById("pin-display").textContent = "PIN: " + existingPin;
+  document.getElementById("quizTitle").value = quiz.settings.title || "";
+  document.getElementById("quizDesc").value = quiz.settings.description || "";
+  document.getElementById("timeLimit").value = quiz.settings.timeLimit || 0;
+  document.getElementById("displayMode").value = quiz.settings.displayMode || "one";
+  const toLocal = ms => ms ? new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "";
+  document.getElementById("opensAt").value = toLocal(quiz.settings.opensAt);
+  document.getElementById("closesAt").value = toLocal(quiz.settings.closesAt);
+  document.getElementById("shuffleQs").checked = !!quiz.settings.shuffleQuestions;
+  document.getElementById("shuffleAs").checked = !!quiz.settings.shuffleAnswers;
+  document.getElementById("partialCred").checked = !!quiz.settings.partialCredit;
+  document.getElementById("showAnswers").checked = !!quiz.results.showAnswers;
+  document.getElementById("allowRetake").checked = !!quiz.results.allowRetake;
+  document.getElementById("allowCsvDownload").checked = quiz.results.allowCsvDownload !== false;
+
+  renderRanges();
+  renderQuestions();
+  updateSettingsSummary();
+  ready = true;
+}
+
+function updateSettingsSummary() {
+  const tl = document.getElementById("timeLimit").value || 0;
+  const mode = document.getElementById("displayMode").selectedOptions[0].text;
+  const flags = [
+    document.getElementById("shuffleQs").checked && "shuffle Qs",
+    document.getElementById("shuffleAs").checked && "shuffle answers",
+    document.getElementById("partialCred").checked && "partial credit",
+    document.getElementById("allowRetake").checked && "retakes allowed"
+  ].filter(Boolean).join(", ") || "defaults";
+  document.getElementById("settingsSummary").textContent =
+    `⚙ ${tl > 0 ? tl + " min" : "No time limit"} · ${mode} · ${flags} — click Settings to edit`;
+}
+document.getElementById("settingsSummary").onclick = () => document.getElementById("settingsModal").showModal();
+document.getElementById("settingsBtn").onclick = () => document.getElementById("settingsModal").showModal();
+document.getElementById("settingsCloseX").onclick = () => document.getElementById("settingsModal").close();
+document.getElementById("settingsDoneBtn").onclick = () => document.getElementById("settingsModal").close();
+document.getElementById("settingsModal").addEventListener("close", updateSettingsSummary);
+
+// Click outside any dialog's content closes it
+document.querySelectorAll("dialog").forEach(d => {
+  d.addEventListener("click", e => { if (e.target === d) d.close(); });
+});
+
+function renderRanges() {
+  const container = document.getElementById("ranges-list");
+  container.innerHTML = quiz.ranges.map((r, idx) => `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+      <input type="number" value="${r.min}" style="width:70px" placeholder="Min %" onchange="window.__upR(${idx},'min',this.value)">
+      <span>% to</span>
+      <input type="number" value="${r.max}" style="width:70px" placeholder="Max %" onchange="window.__upR(${idx},'max',this.value)">
+      <span>%</span>
+      <input type="text" value="${esc(r.msg)}" placeholder="Feedback message..." onchange="window.__upR(${idx},'msg',this.value)">
+      <button class="btn danger" onclick="window.__delR(${idx})">✕</button>
+    </div>
+  `).join('');
+}
+
+window.__upR = (i, f, v) => { quiz.ranges[i][f] = f === 'msg' ? v : Number(v); };
+window.__delR = i => { quiz.ranges.splice(i, 1); renderRanges(); };
+document.getElementById("addRangeBtn").onclick = () => { quiz.ranges.push({ min: 0, max: 100, msg: "Your score: {score}." }); renderRanges(); };
+
+function renderQuestions() {
+  if (ready) dirty = true;
+  const container = document.getElementById("questions-list");
+  container.innerHTML = quiz.questions.map((q, qIdx) => `
+    <div class="card" id="q_${qIdx}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <strong>Question ${qIdx + 1}</strong>
+        <div style="display:flex;gap:6px">
+          <button class="btn alt" onclick="window.__moveQ(${qIdx}, -1)" ${qIdx === 0 ? 'disabled' : ''}>▲</button>
+          <button class="btn alt" onclick="window.__moveQ(${qIdx}, 1)" ${qIdx === quiz.questions.length - 1 ? 'disabled' : ''}>▼</button>
+          <button class="btn alt" title="Duplicate" onclick="window.__dupQ(${qIdx})">⧉</button>
+          <button class="btn danger" onclick="window.__promptDelQ(${qIdx})">Delete Question</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <label>Question Type
+          <select onchange="window.__upQ(${qIdx}, 'type', this.value); window.renderQuestions()">
+            <option value="multiple_choice" ${q.type === 'multiple_choice' ? 'selected' : ''}>Multiple Choice</option>
+            <option value="checkboxes" ${q.type === 'checkboxes' ? 'selected' : ''}>Checkboxes (Multi-select)</option>
+            <option value="drop_list" ${q.type === 'drop_list' ? 'selected' : ''}>Dropdown List</option>
+            <option value="text" ${q.type === 'text' ? 'selected' : ''}>Short Text</option>
+            <option value="number" ${q.type === 'number' ? 'selected' : ''}>Numeric</option>
+          </select>
+        </label>
+        <label>Points
+          <input type="number" value="${q.points ?? 1}" min="0" onchange="window.__upQ(${qIdx}, 'points', Number(this.value))">
+        </label>
+      </div>
+
+      <label style="margin-top:12px;display:block">Question Title / Prompt
+        <input type="text" value="${esc(q.title)}" onchange="window.__upQ(${qIdx}, 'title', this.value)" placeholder="Enter question prompt...">
+      </label>
+
+      <div class="grid-2" style="margin-top:12px">
+        <label>Image URL (Optional)
+          <input type="text" value="${esc(q.imageUrl || '')}" onchange="window.__upQ(${qIdx}, 'imageUrl', this.value)" placeholder="https://...">
+        </label>
+        <label>Explanation / Feedback
+          <input type="text" value="${esc(q.explanation || '')}" onchange="window.__upQ(${qIdx}, 'explanation', this.value)" placeholder="Explanation shown during review...">
+        </label>
+      </div>
+
+      <label class="chk-label" style="margin-top:12px">
+        <input type="checkbox" ${q.required ? 'checked' : ''} onchange="window.__upQ(${qIdx}, 'required', this.checked)"> Mandatory Question
+      </label>
+
+      <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+        ${['multiple_choice', 'checkboxes', 'drop_list'].includes(q.type) ? `
+          <label>Answer Options:</label>
+          ${(q.options || []).map((o, oIdx) => `
+            <div class="opt-row">
+              <input type="${q.type === 'checkboxes' ? 'checkbox' : 'radio'}" name="correct_${qIdx}" ${o.isCorrect ? 'checked' : ''} onchange="window.__setCorrect(${qIdx}, ${oIdx}, this.checked)">
+              <input type="text" value="${esc(o.text)}" onchange="window.__upOpt(${qIdx}, ${oIdx}, this.value)" placeholder="Option text">
+              <button class="btn danger" onclick="window.__delOpt(${qIdx}, ${oIdx})">✕</button>
+            </div>
+          `).join('')}
+          <button class="btn alt" style="margin-top:6px" onclick="window.__addOpt(${qIdx})">+ Add Option</button>
+        ` : `
+          ${q.type === 'number' ? `<label>Tolerance (± allowed difference)<input type="number" step="any" min="0" value="${q.tolerance || 0}" onchange="window.__upQ(${qIdx}, 'tolerance', Number(this.value))"></label><br>` : ''}<label>Correct Answer Key (For auto-grading):
+            <input type="text" value="${esc(q.answerText || '')}" onchange="window.__upQ(${qIdx}, 'answerText', this.value)" placeholder="${q.type === 'number' ? 'e.g., 42' : 'e.g., Paris | City of Light (use | for alternatives)'}">
+          </label>
+        `}
+      </div>
+    </div>
+  `).join('');
+}
+
+window.renderQuestions = renderQuestions;
+window.__moveQ = (i, dir) => {
+  const target = i + dir;
+  if (target < 0 || target >= quiz.questions.length) return;
+  const temp = quiz.questions[i];
+  quiz.questions[i] = quiz.questions[target];
+  quiz.questions[target] = temp;
+  renderQuestions();
+};
+
+window.__promptDelQ = (i) => {
+  questionToDeleteIdx = i;
+  document.getElementById("delQModal").showModal();
+};
+
+document.getElementById("cancelDelQ").onclick = () => document.getElementById("delQModal").close();
+document.getElementById("confirmDelQ").onclick = () => {
+  if (questionToDeleteIdx !== null) {
+    quiz.questions.splice(questionToDeleteIdx, 1);
+    questionToDeleteIdx = null;
+    renderQuestions();
+  }
+  document.getElementById("delQModal").close();
+};
+
+window.__upQ = (i, f, v) => {
+  const q = quiz.questions[i]; q[f] = v;
+  if (f === "type") {
+    if (v !== "checkboxes" && q.options) { let seen = false; q.options.forEach(o => { if (o.isCorrect && seen) o.isCorrect = false; seen = seen || o.isCorrect; }); }
+    if (["multiple_choice", "checkboxes", "drop_list"].includes(v) && !(q.options || []).length)
+      q.options = [{ id: "opt_" + rnd(), text: "", isCorrect: false }, { id: "opt_" + rnd(), text: "", isCorrect: false }];
+  }
+  dirty = true;
+};
+window.__dupQ = i => {
+  const c = JSON.parse(JSON.stringify(quiz.questions[i]));
+  c.id = "q_" + rnd(); (c.options || []).forEach(o => o.id = "opt_" + rnd());
+  quiz.questions.splice(i + 1, 0, c); renderQuestions();
+};
+window.__setCorrect = (qI, oI, checked) => {
+  if (quiz.questions[qI].type === "checkboxes") {
+    quiz.questions[qI].options[oI].isCorrect = checked;
+  } else {
+    quiz.questions[qI].options.forEach((o, idx) => o.isCorrect = (idx === oI));
+  }
+};
+window.__upOpt = (qI, oI, v) => { quiz.questions[qI].options[oI].text = v; };
+window.__delOpt = (qI, oI) => { quiz.questions[qI].options.splice(oI, 1); renderQuestions(); };
+window.__addOpt = qI => {
+  if (!quiz.questions[qI].options) quiz.questions[qI].options = [];
+  quiz.questions[qI].options.push({ id: "opt_" + Math.random().toString(36).substring(2, 7), text: "", isCorrect: false });
+  renderQuestions();
+};
+
+document.getElementById("addQBtn").onclick = () => {
+  quiz.questions.push({
+    id: "q_" + Math.random().toString(36).substring(2, 7),
+    title: "",
+    type: "multiple_choice",
+    points: 1,
+    required: true,
+    options: [{ id: "opt_" + rnd(), text: "", isCorrect: true }, { id: "opt_" + rnd(), text: "", isCorrect: false }]
+  });
+  renderQuestions();
+};
+
+function validate() {
+  const e = [];
+  if (!quiz.questions.length) e.push("Add at least one question");
+  quiz.questions.forEach((q, i) => {
+    const n = "Q" + (i + 1), o = q.options || [];
+    if (!String(q.title || "").trim()) e.push(n + ": prompt is empty");
+    if (["multiple_choice", "checkboxes", "drop_list"].includes(q.type)) {
+      if (o.length < 2) e.push(n + ": needs at least 2 options");
+      else if (o.some(x => !String(x.text).trim())) e.push(n + ": has an empty option");
+      if (!o.some(x => x.isCorrect)) e.push(n + ": mark a correct option");
+    } else if (!String(q.answerText || "").trim()) e.push(n + ": answer key is empty");
+  });
+  quiz.ranges.forEach((r, i) => { if (r.min > r.max) e.push("Range " + (i + 1) + ": min is above max"); });
+  return e;
+}
+function parseBulk(t) {
+  return t.split(/\n\s*\n/).map(b => b.trim().split("\n").map(l => l.trim()).filter(Boolean)).filter(l => l.length).map(lines => {
+    const q = { id: "q_" + rnd(), title: lines[0].replace(/^\d+[.)]\s*/, ""), type: "multiple_choice", points: 1, required: true, options: [] };
+    for (const l of lines.slice(1)) {
+      const m = l.match(/^(\*)?\s*[A-Za-z][.)]\s*(.+)$/), a = l.match(/^answer:\s*(.+)$/i);
+      if (m) q.options.push({ id: "opt_" + rnd(), text: m[2], isCorrect: !!m[1] });
+      else if (a) q.answerText = a[1];
+    }
+    if (!q.options.length) delete q.options, q.type = "text";
+    else if (q.options.filter(o => o.isCorrect).length > 1) q.type = "checkboxes";
+    return q;
+  });
+}
+document.getElementById("bulkBtn").onclick = () => document.getElementById("bulkModal").showModal();
+document.getElementById("bulkCancel").onclick = () => document.getElementById("bulkModal").close();
+document.getElementById("bulkOk").onclick = () => {
+  const qs = parseBulk(document.getElementById("bulkText").value);
+  if (!qs.length) return;
+  quiz.questions.push(...qs); renderQuestions();
+  document.getElementById("bulkText").value = ""; document.getElementById("bulkModal").close();
+  toast(qs.length + " question(s) imported");
+};
+
+/* ---------- Import from PDF / DOCX / TXT ---------- */
+const $ = id => document.getElementById(id);
+const TYPE_LABEL = { multiple_choice: "Multiple choice", checkboxes: "Checkboxes", drop_list: "Drop list", text: "Text", number: "Number" };
+let impItems = [], impDocTitle = "", impNotes = [];
+
+function impStatus(msg, err = false) { const el = $("impStatus"); el.textContent = msg; el.style.color = err ? "var(--danger)" : "var(--muted)"; }
+
+function impRender() {
+  const warn = impItems.filter(i => i.warnings.length).length, on = impItems.filter(i => i.on).length;
+  $("impBody").hidden = !impItems.length;
+  $("impSummary").textContent = `${impItems.length} question(s) found` + (warn ? ` · ${warn} need attention` : "");
+  $("impAdd").disabled = !on;
+  $("impAdd").textContent = on ? `Add ${on} question${on > 1 ? "s" : ""} to quiz` : "Add to quiz";
+  $("impList").innerHTML = impItems.map(({ q, src, warnings, on }, i) => {
+    const body = q.options
+      ? q.options.map(o => `<div style="color:${o.isCorrect ? "var(--success)" : "var(--muted)"}">${o.isCorrect ? "✓" : "○"} ${esc(o.text)}</div>`).join("")
+      : `<div style="color:${q.answerText ? "var(--success)" : "var(--muted)"}">Answer: ${esc(q.answerText || "none")}${q.tolerance ? " (±" + esc(q.tolerance) + ")" : ""}</div>`;
+    return `<div style="border:1px solid ${warnings.length ? "var(--warning)" : "var(--border)"};border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--card-inner)">
+      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" data-i="${i}" ${on ? "checked" : ""} style="margin-top:4px">
+        <span style="flex:1;min-width:0">
+          <strong>${i + 1}. ${esc(q.title)}</strong>
+          <span class="key-badge" style="margin-left:6px">${TYPE_LABEL[q.type] || q.type}</span>
+          <span class="meta" style="font-size:12px;margin-left:4px">${q.points} pt${q.points == 1 ? "" : "s"}${src !== "none" ? " · key from " + esc(src) : ""}</span>
+          <div style="margin:6px 0 0;font-size:13px;line-height:1.5">${body}</div>
+          ${warnings.map(w => `<div style="color:var(--warning);font-size:12px;margin-top:4px">⚠ ${esc(w)}</div>`).join("")}
+        </span>
+      </label></div>`;
+  }).join("");
+}
+
+function impParse() {
+  const r = parseQuizText($("impRaw").value, { points: Math.max(0, Number($("impPoints").value) || 1) });
+  impItems = r.items.map(x => ({ ...x, on: true })); impDocTitle = r.docTitle;
+  const noteTxt = impNotes.length ? " " + impNotes.join(" ") : "";
+  if (!impItems.length) impStatus("No questions detected. Open “Extracted text” below, check the format (1. Question / A) option / Answer: B), then Re-parse." + noteTxt, true);
+  else impStatus("Review the questions below, then add them." + noteTxt);
+  const hasQs = quiz.questions.length;
+  $("impReplaceWrap").hidden = !hasQs; $("impReplace").checked = false;
+  $("impReplaceTxt").textContent = `Replace the ${hasQs} existing question(s) instead of adding to them`;
+  const showT = !!impDocTitle && !$("quizTitle").value.trim();
+  $("impTitleWrap").hidden = !showT; $("impTitleTxt").textContent = `Use “${impDocTitle}” as the quiz title`;
+  $("impRawWrap").hidden = false; $("impRawWrap").open = !impItems.length;
+  impRender();
+}
+
+function impReset() {
+  $("impFile").value = ""; $("impRaw").value = ""; impItems = []; impDocTitle = ""; impNotes = [];
+  $("impBody").hidden = true; $("impRawWrap").hidden = true; $("impAdd").disabled = true; impStatus("");
+}
+
+$("importBtn").onclick = () => { impReset(); $("importModal").showModal(); };
+$("impClose").onclick = $("impCancel").onclick = () => $("importModal").close();
+$("importModal").addEventListener("input", e => e.stopPropagation()); // typing here isn't an unsaved quiz change
+
+$("impFile").onchange = async () => {
+  const f = $("impFile").files[0]; if (!f) return;
+  impStatus(`Reading ${f.name}…`); $("impBody").hidden = true;
+  try {
+    const { text, notes } = await extractText(f);
+    $("impRaw").value = text; impNotes = notes; impParse();
+  } catch (e) { impStatus(e.message || "Could not read this file.", true); }
+};
+$("impReparse").onclick = impParse;
+$("impPoints").onchange = () => { if ($("impRaw").value) impParse(); };
+$("impList").addEventListener("change", e => {
+  const i = e.target.dataset?.i; if (i == null) return;
+  impItems[i].on = e.target.checked; impRender();
+});
+$("impAll").onclick = () => { impItems.forEach(i => i.on = true); impRender(); };
+$("impNoWarn").onclick = () => { impItems.forEach(i => { if (i.warnings.length) i.on = false; }); impRender(); };
+
+$("impAdd").onclick = () => {
+  const chosen = impItems.filter(i => i.on).map(i => i.q);
+  if (!chosen.length) return;
+  const start = $("impReplace").checked ? 0 : quiz.questions.length;
+  if ($("impReplace").checked) quiz.questions = chosen; else quiz.questions.push(...chosen);
+  if (!$("impTitleWrap").hidden && $("impUseTitle").checked) $("quizTitle").value = impDocTitle;
+  renderQuestions();
+  $("importModal").close();
+  $("q_" + start)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const missing = chosen.filter(q => q.options ? !q.options.some(o => o.isCorrect) : !q.answerText).length;
+  toast(`${chosen.length} question(s) imported` + (missing ? ` · ${missing} still need an answer` : " · double-check the answers before saving"), !!missing);
+};
+
+document.getElementById("saveBtn").onclick = async () => {
+  quiz.settings.title = document.getElementById("quizTitle").value.trim() || "Untitled Quiz";
+  quiz.settings.description = document.getElementById("quizDesc").value.trim();
+  quiz.settings.timeLimit = parseInt(document.getElementById("timeLimit").value, 10) || 0;
+  quiz.settings.displayMode = document.getElementById("displayMode").value;
+  const fromLocal = id => { const v = document.getElementById(id).value; return v ? new Date(v).getTime() : 0; };
+  quiz.settings.opensAt = fromLocal("opensAt"); quiz.settings.closesAt = fromLocal("closesAt");
+  quiz.settings.shuffleQuestions = document.getElementById("shuffleQs").checked;
+  quiz.settings.shuffleAnswers = document.getElementById("shuffleAs").checked;
+  quiz.settings.partialCredit = document.getElementById("partialCred").checked;
+  quiz.results.showAnswers = document.getElementById("showAnswers").checked;
+  quiz.results.allowRetake = document.getElementById("allowRetake").checked;
+  quiz.results.allowCsvDownload = document.getElementById("allowCsvDownload").checked;
+
+  const errs = validate();
+  if (errs.length) return toast(errs.slice(0, 3).join(" • "), true);
+  const cleanQuestions = JSON.parse(JSON.stringify(quiz.questions));
+  const keysMap = {};
+
+  cleanQuestions.forEach(q => {
+    keysMap[q.id] = {
+      correct: q.options?.filter(o => o.isCorrect).map(o => o.id) || [],
+      answerText: q.answerText || "",
+      explanation: q.explanation || ""
+    };
+    q.options?.forEach(o => delete o.isCorrect);
+    delete q.answerText;
+    delete q.explanation;
+  });
+
+  const quizPayload = {
+    title: quiz.settings.title,
+    description: quiz.settings.description,
+    questionCount: cleanQuestions.length,
+    published: quiz.published !== false,
+    pinCode: existingPin,
+    updatedAt: serverTimestamp(),
+    settings: quiz.settings,
+    results: quiz.results,
+    ranges: quiz.ranges,
+    questions: cleanQuestions
+  };
+
+  try {
+    const b = writeBatch(db);
+    b.set(doc(db, "quizzes", quizId), quizPayload);
+    b.set(doc(db, "quizKeys", quizId), { key: keysMap, updatedAt: serverTimestamp() });
+    b.set(doc(db, "quizCodes", existingPin), { quizId, title: quizPayload.title, createdAt: serverTimestamp() });
+    await b.commit(); dirty = false;
+
+    document.getElementById("savedPinCode").textContent = existingPin;
+    const studentUrl = `${location.origin}${location.pathname.replace('editor.html', 'quiz.html')}?pin=${existingPin}`;
+    
+    document.getElementById("copyLinkBtn").onclick = () => {
+      navigator.clipboard.writeText(studentUrl);
+      document.getElementById("copyLinkBtn").textContent = "✔ Link copied";
+    };
+    document.getElementById("backDashBtn").onclick = () => location.href = "index.html";
+
+    document.getElementById("savedModal").showModal();
+  } catch (err) {
+    toast("Failed to save quiz: " + err.message, true);
+  }
+};
+</script>
+</body>
+</html>
